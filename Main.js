@@ -1,4 +1,4 @@
-const { Client, MessageEmbed } = require('discord.js-selfbot-v13');
+const { Client, CustomStatus } = require('discord.js-selfbot-v13');
 const fs = require('fs');
 
 const CONFIG_FILE = 'config.json';
@@ -10,8 +10,9 @@ let config = {
     name: 'Hmzir',
     title: 'Hmzir',
     footer: 'hmzir.dev',
-    color: '#9B59B6'
-  }
+    description: 'on'
+  },
+  startup: 'online'
 };
 
 if (fs.existsSync(CONFIG_FILE)) {
@@ -32,14 +33,32 @@ const commands = {
       'ping': 'Check bot latency'
     }
   },
+  profile: {
+    name: 'Profile',
+    description: 'Profile settings',
+    commands: {
+      'profile': 'View profile info',
+      'nick': 'Change your nickname',
+      'invisiblenick': 'Make nickname invisible',
+      'junknick': 'Pure junk nickname'
+    },
+    userControl: {
+      'online': 'Online status',
+      'idle': 'Idle status',
+      'dnd': 'Do not disturb status',
+      'offline': 'Offline status',
+      'startup': 'Startup status',
+      'cstatus': 'Custom status'
+    }
+  },
   settings: {
     name: 'Settings',
     description: 'Settings',
     commands: {
       'prefix': 'Change bot prefix',
-      'ctitle': 'Customize embed title',
-      'cfooter': 'Customize embed footer',
-      'ccolor': 'Customize embed color'
+      'ctitle': 'Customize the title',
+      'cfooter': 'Customize the footer',
+      'description': 'Hide/Show <> | []'
     }
   },
   misc: {
@@ -51,7 +70,11 @@ const commands = {
   }
 };
 
-let commandCount = Object.values(commands).reduce((acc, cat) => acc + Object.keys(cat.commands).length, 0);
+let commandCount = Object.values(commands).reduce((acc, cat) => {
+  let count = Object.keys(cat.commands).length;
+  if (cat.userControl) count += Object.keys(cat.userControl).length;
+  return acc + count;
+}, 0);
 commandCount += 2;
 
 const colors = {
@@ -100,10 +123,8 @@ function displayStatus(user, guilds, friends) {
   console.log(`${colors.gray}>${colors.reset}`);
 }
 
-function createEmbed() {
-  const embed = new MessageEmbed().setColor(config.theme.color);
-  if (config.theme.footer) embed.setFooter({ text: config.theme.footer });
-  return embed;
+function padRight(str, len) {
+  return str + ' '.repeat(Math.max(0, len - str.length));
 }
 
 if (!token) {
@@ -124,6 +145,10 @@ client.on('ready', async () => {
   const guilds = client.guilds.cache.size;
   const friends = client.relationships?.friendCache?.size || 0;
   displayStatus(client.user, guilds, friends);
+  
+  const startupStatus = config.startup || 'online';
+  const statusMap = { online: 'online', idle: 'idle', dnd: 'dnd', offline: 'invisible' };
+  await client.user.setStatus(statusMap[startupStatus] || 'online');
 });
 
 client.on('messageCreate', async (message) => {
@@ -133,6 +158,10 @@ client.on('messageCreate', async (message) => {
 
   const args = message.content.slice(config.prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
+  
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fullCommand = args.length > 0 ? `${config.prefix}${command} ${args.join(' ')}` : `${config.prefix}${command}`;
+  console.log(`${colors.gray}${time} ${colors.gray}|${colors.cyan} Command ${colors.gray}|${colors.white} ${fullCommand}${colors.reset}`);
 
   try {
     await message.delete().catch(() => {});
@@ -141,59 +170,112 @@ client.on('messageCreate', async (message) => {
       const category = args[0]?.toLowerCase();
       
       if (!category) {
-        const embed = createEmbed()
-          .setTitle(config.theme.title)
-          .setDescription('`<>` is required | `[]` is optional');
-        
-        let categoriesText = '';
-        categoriesText += `\`${config.prefix}help [category]\` » Display category commands\n`;
-        categoriesText += `\`${config.prefix}search <command>\` » Search for a command\n\n`;
-        categoriesText += '**Categories**\n\n';
+        let msg = '';
+        if (config.theme.description === 'on') {
+          msg += '> ```\n';
+          msg += '> <> is required | [] is optional\n';
+          msg += '> ```\n';
+        }
+        msg += '> ```\n';
+        msg += `> ${config.theme.title}\n`;
+        msg += '> \n';
+        msg += `> Commands       » ${commandCount}\n`;
+        msg += '> ```\n';
+        msg += '> ```\n';
+        msg += '> Categories\n';
+        msg += '> \n';
+        msg += `> ${config.prefix}help [category] » Display category commands\n`;
+        msg += `> ${config.prefix}search <command> » Search for a command\n`;
         
         for (const [key, cat] of Object.entries(commands)) {
-          categoriesText += `\`${config.prefix}${key}\` » ${cat.description}\n`;
+          msg += `> ${padRight(config.prefix + key, 16)} » ${cat.description}\n`;
         }
         
-        embed.addFields(
-          { name: `Commands » ${commandCount}`, value: categoriesText }
-        );
+        msg += '> ```\n';
+        msg += '> ```\n';
+        msg += '> Version\n';
+        msg += '> \n';
+        msg += `> ${VERSION}\n`;
+        msg += '> ```\n';
+        msg += `> \n> **Enabled Protections** » 0 | ${config.theme.footer}`;
         
-        embed.addFields({ name: 'Version', value: VERSION });
-        
-        await message.channel.send({ embeds: [embed] });
+        await message.channel.send(msg);
       } else if (commands[category]) {
         const cat = commands[category];
-        const embed = createEmbed()
-          .setTitle(`${config.theme.title} - ${cat.name}`);
+        let msg = '';
+        if (config.theme.description === 'on') {
+          msg += '> ```\n';
+          msg += '> <> is required | [] is optional\n';
+          msg += '> ```\n';
+        }
+        msg += '> ```\n';
+        msg += `> ${config.theme.title} - ${cat.name}\n`;
+        msg += '> ```\n';
+        msg += '> ```\n';
+        msg += `> ${cat.name} commands\n`;
+        msg += '> \n';
         
-        let cmdText = '';
         for (const [cmd, desc] of Object.entries(cat.commands)) {
-          cmdText += `\`${config.prefix}${cmd}\` » ${desc}\n`;
+          msg += `> ${padRight(config.prefix + cmd, 16)} » ${desc}\n`;
         }
         
-        embed.setDescription(cmdText || 'No commands in this category.');
-        await message.channel.send({ embeds: [embed] });
+        if (cat.userControl) {
+          msg += '> \n';
+          msg += '> User Control\n';
+          msg += '> \n';
+          for (const [cmd, desc] of Object.entries(cat.userControl)) {
+            msg += `> ${padRight(config.prefix + cmd, 16)} » ${desc}\n`;
+          }
+        }
+        
+        msg += '> ```\n';
+        msg += `> \n> **Enabled Protections** » 0 | ${config.theme.footer}`;
+        
+        await message.channel.send(msg);
       }
     }
 
     else if (commands[command]) {
       const cat = commands[command];
-      const embed = createEmbed()
-        .setTitle(`${config.theme.title} - ${cat.name}`);
+      let msg = '';
+      if (config.theme.description === 'on') {
+        msg += '> ```\n';
+        msg += '> <> is required | [] is optional\n';
+        msg += '> ```\n';
+      }
+      msg += '> ```\n';
+      msg += `> ${config.theme.title} - ${cat.name}\n`;
+      msg += '> ```\n';
+      msg += '> ```\n';
+      msg += `> ${cat.name} commands\n`;
+      msg += '> \n';
       
-      let cmdText = '';
       for (const [cmd, desc] of Object.entries(cat.commands)) {
-        cmdText += `\`${config.prefix}${cmd}\` » ${desc}\n`;
+        msg += `> ${padRight(config.prefix + cmd, 16)} » ${desc}\n`;
       }
       
-      embed.setDescription(cmdText || 'No commands in this category.');
-      await message.channel.send({ embeds: [embed] });
+      if (cat.userControl) {
+        msg += '> \n';
+        msg += '> User Control\n';
+        msg += '> \n';
+        for (const [cmd, desc] of Object.entries(cat.userControl)) {
+          msg += `> ${padRight(config.prefix + cmd, 16)} » ${desc}\n`;
+        }
+      }
+      
+      msg += '> ```\n';
+      msg += `> \n> **Enabled Protections** » 0 | ${config.theme.footer}`;
+      
+      await message.channel.send(msg);
     }
 
     else if (command === 'search') {
       const query = args[0]?.toLowerCase();
       if (!query) {
-        return message.channel.send(`Usage: \`${config.prefix}search <command>\``);
+        let msg = '> ```\n';
+        msg += `> Usage: ${config.prefix}search <command>\n`;
+        msg += '> ```';
+        return message.channel.send(msg);
       }
       
       let results = [];
@@ -203,82 +285,387 @@ client.on('messageCreate', async (message) => {
             results.push({ cmd, desc, category: cat.name });
           }
         }
+        if (cat.userControl) {
+          for (const [cmd, desc] of Object.entries(cat.userControl)) {
+            if (cmd.includes(query) || desc.toLowerCase().includes(query)) {
+              results.push({ cmd, desc, category: cat.name });
+            }
+          }
+        }
       }
       
-      const embed = createEmbed().setTitle(`Search Results: "${query}"`);
+      let msg = '> ```\n';
+      msg += `> Search Results: "${query}"\n`;
+      msg += '> ```\n';
+      msg += '> ```\n';
+      
       if (results.length > 0) {
-        let text = '';
         for (const r of results.slice(0, 10)) {
-          text += `\`${config.prefix}${r.cmd}\` » ${r.desc} *(${r.category})*\n`;
+          msg += `> ${padRight(config.prefix + r.cmd, 16)} » ${r.desc} (${r.category})\n`;
         }
-        embed.setDescription(text);
       } else {
-        embed.setDescription('No commands found.');
+        msg += '> No commands found.\n';
       }
-      await message.channel.send({ embeds: [embed] });
+      
+      msg += '> ```\n';
+      msg += `> \n> **Enabled Protections** » 0 | ${config.theme.footer}`;
+      
+      await message.channel.send(msg);
     }
 
     else if (command === 'ping') {
-      const sent = await message.channel.send('Pinging...');
+      const sent = await message.channel.send('> ```\n> Pinging...\n> ```');
       const ping = sent.createdTimestamp - message.createdTimestamp;
-      await sent.edit(`Pong! Latency: \`${ping}ms\` | API: \`${Math.round(client.ws.ping)}ms\``);
+      let msg = '> ```\n';
+      msg += `> Latency        » ${ping}ms\n`;
+      msg += `> API Latency    » ${Math.round(client.ws.ping)}ms\n`;
+      msg += '> ```';
+      await sent.edit(msg);
     }
 
     else if (command === 'about') {
-      const embed = createEmbed()
-        .setTitle(config.theme.title)
-        .setDescription('The Ultimate Discord Selfbot')
-        .addFields(
-          { name: 'Version', value: VERSION, inline: true },
-          { name: 'Commands', value: commandCount.toString(), inline: true },
-          { name: 'Prefix', value: config.prefix, inline: true },
-          { name: 'Guilds', value: client.guilds.cache.size.toString(), inline: true }
-        );
-      await message.channel.send({ embeds: [embed] });
+      let msg = '> ```\n';
+      msg += `> ${config.theme.title}\n`;
+      msg += '> \n';
+      msg += '> The Ultimate Discord Selfbot\n';
+      msg += '> ```\n';
+      msg += '> ```\n';
+      msg += `> Version        » ${VERSION}\n`;
+      msg += `> Commands       » ${commandCount}\n`;
+      msg += `> Prefix         » ${config.prefix}\n`;
+      msg += `> Guilds         » ${client.guilds.cache.size}\n`;
+      msg += '> ```\n';
+      msg += `> \n> **Enabled Protections** » 0 | ${config.theme.footer}`;
+      
+      await message.channel.send(msg);
     }
 
     else if (command === 'prefix') {
       const newPrefix = args[0];
       if (!newPrefix) {
-        return message.channel.send(`Current prefix: \`${config.prefix}\`\nUsage: \`${config.prefix}prefix <new_prefix>\``);
+        let msg = '> ```\n';
+        msg += `> Current prefix » ${config.prefix}\n`;
+        msg += '> \n';
+        msg += `> Usage: ${config.prefix}prefix <new_prefix>\n`;
+        msg += '> ```';
+        return message.channel.send(msg);
       }
       
       const oldPrefix = config.prefix;
       config.prefix = newPrefix;
       saveConfig();
       
-      const embed = createEmbed()
-        .setTitle('Prefix Updated')
-        .setDescription(`\`${oldPrefix}\` → \`${config.prefix}\`\n\nNew prefix saved permanently!`);
-      await message.channel.send({ embeds: [embed] });
+      let msg = '> ```\n';
+      msg += '> Prefix Updated\n';
+      msg += '> \n';
+      msg += `> ${oldPrefix} → ${config.prefix}\n`;
+      msg += '> \n';
+      msg += '> New prefix saved permanently!\n';
+      msg += '> ```';
+      await message.channel.send(msg);
     }
 
     else if (command === 'ctitle') {
       const title = args.join(' ');
-      if (!title) return message.channel.send(`Current title: \`${config.theme.title}\`\nUsage: \`${config.prefix}ctitle <title>\` or \`${config.prefix}ctitle none\``);
+      if (!title) {
+        let msg = '> ```\n';
+        msg += '> Selfbot theme settings\n';
+        msg += '> \n';
+        msg += `> Current title  » ${config.theme.title}\n`;
+        msg += '> \n';
+        msg += `> Usage: ${config.prefix}ctitle <title>\n`;
+        msg += `> Use "${config.prefix}ctitle none" to reset\n`;
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
       
       config.theme.title = title === 'none' ? 'Hmzir' : title;
       saveConfig();
-      await message.channel.send(`Title set to: ${config.theme.title}`);
+      
+      let msg = '> ```\n';
+      msg += `> Title set to: ${config.theme.title}\n`;
+      msg += '> ```';
+      await message.channel.send(msg);
     }
 
     else if (command === 'cfooter') {
       const footer = args.join(' ');
-      if (!footer) return message.channel.send(`Current footer: \`${config.theme.footer}\`\nUsage: \`${config.prefix}cfooter <footer>\` or \`${config.prefix}cfooter none\``);
+      if (!footer) {
+        let msg = '> ```\n';
+        msg += '> Selfbot theme settings\n';
+        msg += '> \n';
+        msg += `> Current footer » ${config.theme.footer || 'none'}\n`;
+        msg += '> \n';
+        msg += `> Usage: ${config.prefix}cfooter <footer>\n`;
+        msg += `> Use "${config.prefix}cfooter none" to reset\n`;
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
       
-      config.theme.footer = footer === 'none' ? null : footer;
+      config.theme.footer = footer === 'none' ? 'hmzir.dev' : footer;
       saveConfig();
-      await message.channel.send(`Footer set to: ${config.theme.footer || 'none'}`);
+      
+      let msg = '> ```\n';
+      msg += `> Footer set to: ${config.theme.footer}\n`;
+      msg += '> ```';
+      await message.channel.send(msg);
     }
 
-    else if (command === 'ccolor') {
-      const color = args[0];
-      if (!color) return message.channel.send(`Current color: \`${config.theme.color}\`\nUsage: \`${config.prefix}ccolor <#hex>\``);
+    else if (command === 'description') {
+      const toggle = args[0]?.toLowerCase();
+      if (!toggle || (toggle !== 'on' && toggle !== 'off')) {
+        let msg = '> ```\n';
+        msg += '> Description settings\n';
+        msg += '> \n';
+        msg += `> Current state  » ${config.theme.description || 'on'}\n`;
+        msg += '> \n';
+        msg += `> Usage: ${config.prefix}description <on/off>\n`;
+        msg += '> Hide/Show <> | []\n';
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
       
-      config.theme.color = color;
+      config.theme.description = toggle;
       saveConfig();
-      const embed = createEmbed().setDescription('Color updated!');
-      await message.channel.send({ embeds: [embed] });
+      
+      let msg = '> ```\n';
+      msg += `> Description ${toggle === 'on' ? 'enabled' : 'disabled'}\n`;
+      msg += '> ```';
+      await message.channel.send(msg);
+    }
+
+    else if (command === 'profile') {
+      const user = client.user;
+      let msg = '> **Profile**\n';
+      if (config.theme.description === 'on') {
+        msg += '> ```\n';
+        msg += '> <> is required | [] is optional\n';
+        msg += '> ```\n';
+      }
+      msg += '> ```\n';
+      msg += '> Current profile\n';
+      msg += '> \n';
+      msg += `> ${padRight('User', 16)} » ${user.tag}\n`;
+      msg += `> ${padRight('Username', 16)} » ${user.username}\n`;
+      msg += `> ${padRight('Discriminator', 16)} » ${user.discriminator}\n`;
+      msg += '> ```\n';
+      msg += '> ```\n';
+      msg += '> Nickname Control\n';
+      msg += '> \n';
+      msg += `> ${config.prefix}nick <name>     » Change your nickname\n`;
+      msg += `> ${config.prefix}invisiblenick   » Make your nickname invisible\n`;
+      msg += `> ${config.prefix}junknick        » Pure junk nickname\n`;
+      msg += '> ```\n';
+      msg += '> ```\n';
+      msg += '> User Control\n';
+      msg += '> \n';
+      msg += `> ${config.prefix}online          » Online status\n`;
+      msg += `> ${config.prefix}idle            » Idle status\n`;
+      msg += `> ${config.prefix}dnd             » Do not disturb status\n`;
+      msg += `> ${config.prefix}offline         » Offline status\n`;
+      msg += `> ${config.prefix}startup <status> » Startup\n`;
+      msg += `> ${config.prefix}cstatus <text>  » Custom status\n`;
+      msg += '> ```\n';
+      msg += `> \n> **Enabled Protections** » 0 | ${config.theme.footer}`;
+      await message.channel.send(msg);
+    }
+
+    else if (command === 'nick') {
+      const nickname = args.join(' ');
+      if (!nickname) {
+        let msg = '> ```\n';
+        msg += `> Usage: ${config.prefix}nick <name>\n`;
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
+      
+      if (!message.guild) {
+        let msg = '> ```\n';
+        msg += '> This command can only be used in a server\n';
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
+      
+      try {
+        await message.guild.members.me.setNickname(nickname);
+        let msg = '> ```\n';
+        msg += `> Nickname changed to: ${nickname}\n`;
+        msg += '> ```';
+        await message.channel.send(msg);
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += '> Failed to change nickname\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
+    }
+
+    else if (command === 'invisiblenick') {
+      if (!message.guild) {
+        let msg = '> ```\n';
+        msg += '> This command can only be used in a server\n';
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
+      
+      try {
+        await message.guild.members.me.setNickname('\u200B');
+        let msg = '> ```\n';
+        msg += '> Nickname set to invisible\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += '> Failed to change nickname\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
+    }
+
+    else if (command === 'junknick') {
+      if (!message.guild) {
+        let msg = '> ```\n';
+        msg += '> This command can only be used in a server\n';
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
+      
+      const junkChars = '̶̷̸̡̢̧̨̛̖̗̘̙̜̝̞̟̠̣̤̥̦̩̪̫̬̭̮̯̰̱̲̳̹̺̻̼͇͈͉͍͎̀́̂̃̄̅̆̇̈̉̊̋̌̍̎̏̐̑̒̓̔̽̾̿̀́͂̓̈́͆͊͋͌̕̚ͅ͏͓͔͕͖͙͚͐͑͒͗͛ͣͤͥͦͧͨͩͪͫͬͭͮͯ͘͜͟͢͝͞͠͡';
+      let junkNick = '';
+      for (let i = 0; i < 5; i++) {
+        junkNick += junkChars[Math.floor(Math.random() * junkChars.length)];
+      }
+      
+      try {
+        await message.guild.members.me.setNickname(junkNick);
+        let msg = '> ```\n';
+        msg += '> Junk nickname applied\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += '> Failed to change nickname\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
+    }
+
+    else if (command === 'online') {
+      try {
+        await client.user.setStatus('online');
+        let msg = '> ```\n';
+        msg += '> Status set to online\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += '> Failed to set status\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
+    }
+
+    else if (command === 'idle') {
+      try {
+        await client.user.setStatus('idle');
+        let msg = '> ```\n';
+        msg += '> Status set to idle\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += '> Failed to set status\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
+    }
+
+    else if (command === 'dnd') {
+      try {
+        await client.user.setStatus('dnd');
+        let msg = '> ```\n';
+        msg += '> Status set to do not disturb\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += '> Failed to set status\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
+    }
+
+    else if (command === 'offline') {
+      try {
+        await client.user.setStatus('invisible');
+        let msg = '> ```\n';
+        msg += '> Status set to offline\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += '> Failed to set status\n';
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
+    }
+
+    else if (command === 'startup') {
+      const status = args[0]?.toLowerCase();
+      const validStatuses = ['online', 'idle', 'dnd', 'offline'];
+      
+      if (!status || !validStatuses.includes(status)) {
+        let msg = '> ```\n';
+        msg += '> Startup settings\n';
+        msg += '> \n';
+        msg += `> Current startup » ${config.startup || 'online'}\n`;
+        msg += '> \n';
+        msg += `> Usage: ${config.prefix}startup <online/idle/dnd/offline>\n`;
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
+      
+      config.startup = status;
+      saveConfig();
+      
+      let msg = '> ```\n';
+      msg += `> Startup status set to: ${status}\n`;
+      msg += '> ```';
+      await message.channel.send(msg);
+    }
+
+    else if (command === 'cstatus') {
+      const text = args.join(' ');
+      
+      if (!text) {
+        let msg = '> ```\n';
+        msg += `> Usage: ${config.prefix}cstatus <text>\n`;
+        msg += `> Use "${config.prefix}cstatus none" to clear\n`;
+        msg += '> ```';
+        return message.channel.send(msg);
+      }
+      
+      try {
+        if (text === 'none') {
+          await client.user.setActivity(null);
+          let msg = '> ```\n';
+          msg += '> Custom status cleared\n';
+          msg += '> ```';
+          await message.channel.send(msg);
+        } else {
+          const customStatus = new CustomStatus().setState(text);
+          await client.user.setActivity(customStatus);
+          let msg = '> ```\n';
+          msg += `> Custom status set to: ${text}\n`;
+          msg += '> ```';
+          await message.channel.send(msg);
+        }
+      } catch (e) {
+        let msg = '> ```\n';
+        msg += `> Failed to set custom status: ${e.message}\n`;
+        msg += '> ```';
+        await message.channel.send(msg);
+      }
     }
 
   } catch (error) {
